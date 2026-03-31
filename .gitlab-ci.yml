@@ -1,0 +1,84 @@
+stages:
+  - build
+  - test
+  - lint
+  - requirements
+
+variables:
+  CARGO_TERM_COLOR: always
+
+before_script:
+  - rustc --version
+  - cargo --version
+
+# ── Default build (no optional features) ─────────────────────────────────
+
+build:
+  stage: build
+  image: rust:latest
+  script:
+    - cargo build --release
+  artifacts:
+    paths:
+      - target/release/req
+      - target/release/req-mcp-server
+
+# ── Build with ReqIF feature (requires Python + reqif package) ────────────
+
+build:reqif:
+  stage: build
+  image: rust:latest
+  before_script:
+    - rustc --version
+    - cargo --version
+    - apt-get update -q && apt-get install -y python3 python3-pip
+    - pip3 install reqif
+    - export PYO3_PYTHON=$(which python3)
+  script:
+    - cargo build --release --features reqif
+  artifacts:
+    paths:
+      - target/release/req
+
+# ── Tests ────────────────────────────────────────────────────────────────
+
+test:
+  stage: test
+  image: rust:latest
+  script:
+    - cargo test
+
+test:reqif:
+  stage: test
+  image: rust:latest
+  before_script:
+    - rustc --version
+    - cargo --version
+    - apt-get update -q && apt-get install -y python3 python3-pip
+    - pip3 install reqif
+    - export PYO3_PYTHON=$(which python3)
+  script:
+    - cargo test --features reqif
+
+# ── Lint ─────────────────────────────────────────────────────────────────
+
+lint:
+  stage: lint
+  image: rust:latest
+  script:
+    - cargo fmt --all -- --check
+    - cargo clippy --all-targets -- -D warnings
+
+# ── Self-hosted requirements gate ─────────────────────────────────────────
+
+requirements:
+  stage: requirements
+  image: rust:latest
+  dependencies:
+    - build
+  script:
+    # Run req's own traceability check using the freshly built binary
+    - export PATH="$CI_PROJECT_DIR/target/release:$PATH"
+    - req scan --clear
+    - req check
+    - req coverage

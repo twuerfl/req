@@ -1,0 +1,3 @@
+# Cache database - can be regenerated
+*.db
+coverage-report.json

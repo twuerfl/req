@@ -1,0 +1,45 @@
+[package]
+name = "req"
+version = "0.1.0"
+edition = "2024"
+authors = ["Thomas Würfl"]
+license = "MIT OR Apache-2.0"
+description = "Git-native requirement traceability tool for safety-critical systems"
+repository = "https://github.com/twuerfl/req"
+keywords = ["requirements", "traceability", "safety", "iso26262", "do-178"]
+categories = ["command-line-utilities", "development-tools"]
+
+[workspace]
+members = [
+    "req_cli",
+    "req_lib",
+    "req_engine",
+    "req_mcp",
+]
+exclude = [
+    "tests/fixtures/coverage_fixture",
+]
+
+[dependencies]
+req_cli = { path = "req_cli" }
+clap = { version = "4", features = ["derive"] }
+
+[features]
+reqif = ["req_engine/reqif"]
+git = ["req_engine/git"]
+
+[dev-dependencies]
+tempfile = "3"
+req_engine = { path = "req_engine" }
+req_lib = { path = "req_lib" }
+req_cli = { path = "req_cli" }
+req_mcp = { path = "req_mcp" }
+rmcp = { version = "1.2", features = ["server", "macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1"
+rusqlite = { version = "0.38", features = ["bundled"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

@@ -1,0 +1,46 @@
+[package]
+name = "req_engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Domain types
+req_lib = { path = "../req_lib" }
+
+# Error handling
+thiserror = "2.0"
+
+# Database
+rusqlite = { version = "0.38", features = ["bundled"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Config parsing
+toml = "0.9"
+
+# Code scanning
+regex = "1"
+walkdir = "2"
+
+# File hashing (incremental scan)
+blake3 = "1.0"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# ReqIF support (optional, requires Python + reqif package)
+pyo3 = { version = "0.24", features = ["auto-initialize"], optional = true }
+
+# Git integration (optional, for author independence check)
+git2 = { version = "0.20", optional = true }
+
+[features]
+default = []
+reqif = ["pyo3"]
+git = ["git2"]
+
+[dev-dependencies]
+tempfile = "3"

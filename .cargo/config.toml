@@ -1,0 +1,4 @@
+[env]
+# PyO3 requires an explicit Python path on Windows because it searches
+# the Scripts/ sub-directory instead of the install root.
+PYO3_PYTHON = "C:/Program Files/Python313/python.exe"

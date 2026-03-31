@@ -1,0 +1,9 @@
+project = ""
+source_dirs = [
+    "src",
+    "tests",
+]
+requirements_dir = "requirements"
+default_adapter = "markdown"
+
+[profiles]

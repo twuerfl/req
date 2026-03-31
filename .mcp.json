@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "req": {
+      "command": "c:/01_DATA/111 req/req/target/debug/req-mcp-server.exe",
+      "args": [],
+      "env": {
+        "REQ_BASE": "c:/01_DATA/111 req/req"
+      }
+    }
+  }
+}

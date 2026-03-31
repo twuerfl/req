@@ -1,0 +1,10 @@
+project = "req"
+requirements_dir = "requirements"
+default_adapter = "markdown"
+source_dirs = [
+    "req_lib/src",
+    "req_engine/src",
+    "req_cli/src",
+    "req_mcp/src",
+    "tests",
+]
