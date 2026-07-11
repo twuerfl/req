@@ -253,3 +253,98 @@ fn test_can_handle() {
     // Should not handle other files
     assert!(!adapter.can_handle(&txt_file));
 }
+
+/// Test that writer includes tool_version in frontmatter (TC-006)
+// VERIFIES: TST-0003 TC-006
+// VERIFIES: LLR-0003
+// VERIFIES: LLR-0013
+#[test]
+fn test_writer_includes_tool_version() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let adapter = MarkdownAdapter::new();
+
+    let req = Requirement {
+        id: "HLR-TV".to_string(),
+        req_type: RequirementType::Hlr,
+        title: "Tool Version Test".to_string(),
+        text: "Body text.".to_string(),
+        status: RequirementStatus::Approved,
+        parent: None,
+        aliases: vec![],
+        attributes: std::collections::HashMap::new(),
+        source_file: None,
+        created: chrono::Utc::now(),
+        modified: chrono::Utc::now(),
+    };
+
+    adapter.write(&[req], temp_dir.path()).unwrap();
+
+    let file_path = temp_dir.path().join("requirements/hlr/HLR-TV.md");
+    let content = std::fs::read_to_string(&file_path).unwrap();
+    assert!(
+        content.contains("tool_version:"),
+        "frontmatter must contain tool_version field, got: {content}"
+    );
+    assert!(
+        content.contains(&format!("tool_version: {}", env!("CARGO_PKG_VERSION"))),
+        "tool_version must match CARGO_PKG_VERSION"
+    );
+}
+
+/// Test that parser tolerates tool_version in frontmatter (TC-006)
+// VERIFIES: TST-0003 TC-006
+// VERIFIES: LLR-0003
+#[test]
+fn test_parser_tolerates_tool_version() {
+    let content = format!(
+        r#"---
+id: LLR-0001
+type: llr
+title: "Test"
+status: approved
+tool_version: 0.1.0
+parent: HLR-0001
+---
+
+Body text.
+"#,
+    );
+    let adapter = MarkdownAdapter::new();
+    let req = adapter.parse_content(&content, None).unwrap();
+    assert_eq!(req.id, "LLR-0001");
+    assert_eq!(req.req_type, RequirementType::Llr);
+}
+
+/// Test that round-trip preserves tool_version (TC-006)
+// VERIFIES: TST-0003 TC-006
+// VERIFIES: LLR-0003
+#[test]
+fn test_roundtrip_preserves_tool_version() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let adapter = MarkdownAdapter::new();
+
+    let original = Requirement {
+        id: "LLR-RT".to_string(),
+        req_type: RequirementType::Llr,
+        title: "Roundtrip TV".to_string(),
+        text: "Body.".to_string(),
+        status: RequirementStatus::Approved,
+        parent: Some("HLR-001".to_string()),
+        aliases: vec![],
+        attributes: std::collections::HashMap::new(),
+        source_file: None,
+        created: chrono::Utc::now(),
+        modified: chrono::Utc::now(),
+    };
+
+    adapter.write(&[original], temp_dir.path()).unwrap();
+    let file_path = temp_dir.path().join("requirements/llr/LLR-RT.md");
+    let read_reqs = adapter.read(&file_path).unwrap();
+
+    assert_eq!(read_reqs.len(), 1);
+    assert_eq!(read_reqs[0].id, "LLR-RT");
+
+    // Re-write and check tool_version is still present
+    let content = std::fs::read_to_string(&file_path).unwrap();
+    assert!(content.contains("tool_version:"));
+}
