@@ -35,6 +35,8 @@ struct Frontmatter {
     #[serde(default)]
     status: String,
     parent: Option<String>,
+    #[serde(default)]
+    tool_version: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     aliases: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -171,6 +173,7 @@ impl MarkdownAdapter {
             serde_json::to_string(&req.title).unwrap()
         )?;
         writeln!(writer, "status: {}", req.status.as_str())?;
+        writeln!(writer, "tool_version: {}", env!("CARGO_PKG_VERSION"))?;
 
         if let Some(parent) = &req.parent {
             writeln!(writer, "parent: {}", parent)?;
@@ -217,6 +220,7 @@ impl MarkdownAdapter {
         writeln!(w, "type: {}", req.req_type.as_str())?;
         writeln!(w, "title: {}", serde_json::to_string(&req.title).unwrap())?;
         writeln!(w, "status: {}", req.status.as_str())?;
+        writeln!(w, "tool_version: {}", env!("CARGO_PKG_VERSION"))?;
         if let Some(parent) = &req.parent {
             writeln!(w, "parent: {}", parent)?;
         }
