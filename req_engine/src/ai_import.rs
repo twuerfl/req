@@ -48,7 +48,7 @@ pub struct AiSuggestions {
 }
 
 /// Result of importing AI suggestions
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct ImportResult {
     /// Successfully imported requirements (all forced to `draft`)
     pub imported: Vec<Requirement>,

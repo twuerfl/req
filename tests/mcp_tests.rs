@@ -4,7 +4,11 @@
 // VERIFIES: LLR-0025
 
 use req_engine::{Requirement, RequirementType, ReqEngine};
-use req_mcp::server::{AuditCoverageInput, ExportInput, ListInput, ReqServer};
+use req_mcp::server::{
+    AuditCoverageInput, AuditExportContextInput, AuditMutationInput, CreateRequirementInput,
+    ExportInput, IdInput, ImportAiInput, ImportInput, ListInput, MigrateInput, OptionalIdInput,
+    RemoveInput, ReqServer,
+};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, RawContent};
 use tempfile::TempDir;
@@ -146,7 +150,7 @@ fn test_mcp_tool_export_json() {
     let server = ReqServer::new(make_engine(&dir));
 
     let result = server
-        .req_export(Parameters(ExportInput { format: "json".to_string() }))
+        .req_export(Parameters(ExportInput { format: "json".to_string(), id: None }))
         .unwrap();
     let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
     assert!(json.is_array(), "json export should return an array");
@@ -161,7 +165,7 @@ fn test_mcp_tool_export_ai_context() {
     let server = ReqServer::new(make_engine(&dir));
 
     let result = server
-        .req_export(Parameters(ExportInput { format: "ai-context".to_string() }))
+        .req_export(Parameters(ExportInput { format: "ai-context".to_string(), id: None }))
         .unwrap();
     let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
     assert!(json.get("requirements").is_some(), "ai-context must have requirements key");
@@ -286,4 +290,393 @@ fn test_mcp_audit_coverage_missing_file_errors() {
         err.message.contains("IO") || err.message.contains("error") || !err.message.is_empty(),
         "missing report should produce a non-empty error message"
     );
+}
+
+// ── TC-008: req_create_requirement ─────────────────────────────────────────
+
+/// TC-008: req_create_requirement creates a new LLR and returns it as JSON.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_create_requirement() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_create_requirement(Parameters(CreateRequirementInput {
+            r#type: "llr".to_string(),
+            title: "Created via MCP".to_string(),
+            parent: Some("HLR-0001".to_string()),
+            status: "draft".to_string(),
+        }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["parent"], "HLR-0001");
+    assert_eq!(json["title"], "Created via MCP");
+    assert_eq!(json["status"], "draft");
+    assert_eq!(json["type"], "llr");
+}
+
+/// TC-008b: req_create_requirement rejects an unknown type.
+#[test]
+fn test_mcp_create_requirement_bad_type() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let err = server
+        .req_create_requirement(Parameters(CreateRequirementInput {
+            r#type: "bogus".to_string(),
+            title: "x".to_string(),
+            parent: None,
+            status: "draft".to_string(),
+        }))
+        .unwrap_err();
+    assert!(!err.message.is_empty());
+}
+
+// ── TC-009: req_remove ─────────────────────────────────────────────────────
+
+/// TC-009: req_remove purges a requirement from the cache.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_remove() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_remove(Parameters(RemoveInput {
+            id: "LLR-0001".to_string(),
+            cache_only: true,
+            force: true,
+        }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["id"], "LLR-0001");
+    assert_eq!(json["file_deleted"], false);
+}
+
+/// TC-009b: req_remove on an unknown ID returns an error.
+#[test]
+fn test_mcp_remove_unknown_id() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let _err = server
+        .req_remove(Parameters(RemoveInput {
+            id: "LLR-9999".to_string(),
+            cache_only: true,
+            force: true,
+        }))
+        .unwrap_err();
+}
+
+// ── TC-010: req_import ─────────────────────────────────────────────────────
+
+/// TC-010: req_import imports requirements from a JSON file.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_import_json() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let json = r#"[{
+        "id": "HLR-0099",
+        "type": "hlr",
+        "title": "Imported HLR",
+        "status": "approved",
+        "text": "",
+        "parent": null,
+        "source_file": null,
+        "created_at": null,
+        "updated_at": null,
+        "attributes": {}
+    }]"#;
+    let path = dir.path().join("import.json");
+    std::fs::write(&path, json).unwrap();
+
+    let result = server
+        .req_import(Parameters(ImportInput {
+            input: path.to_string_lossy().into_owned(),
+            format: "json".to_string(),
+            provenance: None,
+        }))
+        .unwrap();
+    let arr: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert!(arr.is_array());
+    assert_eq!(arr.as_array().unwrap().len(), 1);
+    assert_eq!(arr[0]["id"], "HLR-0099");
+}
+
+// ── TC-011: req_import_ai ──────────────────────────────────────────────────
+
+/// TC-011: req_import_ai imports suggestions and forces draft status.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_import_ai() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let json = r#"{
+        "source": "test-model",
+        "suggestions": [{
+            "type": "llr",
+            "title": "AI-suggested LLR",
+            "parent": "HLR-0001",
+            "text": "Shall do X"
+        }]
+    }"#;
+    let path = dir.path().join("suggestions.json");
+    std::fs::write(&path, json).unwrap();
+
+    let result = server
+        .req_import_ai(Parameters(ImportAiInput {
+            input: path.to_string_lossy().into_owned(),
+            dry_run: false,
+            provenance: Some("test-model".to_string()),
+        }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    let imported = json["imported"].as_array().unwrap();
+    assert_eq!(imported.len(), 1);
+    assert_eq!(imported[0]["status"], "draft", "AI imports must be forced to draft");
+    assert_eq!(imported[0]["parent"], "HLR-0001");
+}
+
+/// TC-011b: req_import_ai dry-run does not write.
+#[test]
+fn test_mcp_import_ai_dry_run() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let json = r#"{
+        "source": "test-model",
+        "suggestions": [{
+            "type": "llr",
+            "title": "Dry-run LLR",
+            "parent": "HLR-0001",
+            "text": "Shall do Y"
+        }]
+    }"#;
+    let path = dir.path().join("suggestions_dry.json");
+    std::fs::write(&path, json).unwrap();
+
+    let result = server
+        .req_import_ai(Parameters(ImportAiInput {
+            input: path.to_string_lossy().into_owned(),
+            dry_run: true,
+            provenance: None,
+        }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["imported"].as_array().unwrap().len(), 1);
+    // The requirement should not have been written to disk
+    let req_dir = dir.path().join("requirements/llr");
+    let files: Vec<_> = std::fs::read_dir(&req_dir)
+        .map(|it| it.filter_map(|e| e.ok()).collect())
+        .unwrap_or_default();
+    assert!(files.is_empty(), "dry-run should not write files");
+}
+
+// ── TC-012: req_migrate ────────────────────────────────────────────────────
+
+/// TC-012: req_migrate dry-run reports without writing.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_migrate_dry_run() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_migrate(Parameters(MigrateInput { dry_run: true }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["dry_run"], true);
+    assert!(json["total"].as_u64().is_some());
+}
+
+// ── TC-013: req_audit_triviality ───────────────────────────────────────────
+
+/// TC-013: req_audit_triviality returns a JSON array.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_audit_triviality() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_audit_triviality(Parameters(OptionalIdInput { id: None }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert!(json.is_array(), "req_audit_triviality must return a JSON array");
+}
+
+// ── TC-014: req_audit_criteria ─────────────────────────────────────────────
+
+/// TC-014: req_audit_criteria returns a CriteriaReport for an LLR.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_audit_criteria() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_audit_criteria(Parameters(IdInput { id: "LLR-0001".to_string() }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["req_id"], "LLR-0001");
+    assert!(json.get("criteria").is_some());
+}
+
+// ── TC-015: req_audit_mutation ─────────────────────────────────────────────
+
+/// TC-015: req_audit_mutation parses a valid cargo-mutants report.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_audit_mutation() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let json = r#"[
+        { "file": "src/lib.rs", "line": 1, "kind": "ReplaceWithDefault", "outcome": "Caught" }
+    ]"#;
+    let path = dir.path().join("mutants.json");
+    std::fs::write(&path, json).unwrap();
+
+    let result = server
+        .req_audit_mutation(Parameters(AuditMutationInput {
+            report: path.to_string_lossy().into_owned(),
+        }))
+        .unwrap();
+    let val: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert!(val.get("scores").is_some(), "MutationReport should have a scores field");
+}
+
+/// TC-015b: req_audit_mutation errors on a missing report file.
+#[test]
+fn test_mcp_audit_mutation_missing_file() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let _err = server
+        .req_audit_mutation(Parameters(AuditMutationInput {
+            report: dir.path().join("nope.json").to_string_lossy().into_owned(),
+        }))
+        .unwrap_err();
+}
+
+// ── TC-016: req_audit_export_context ───────────────────────────────────────
+
+/// TC-016: req_audit_export_context returns an AuditBundle for an LLR.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_audit_export_context() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_audit_export_context(Parameters(AuditExportContextInput {
+            id: "LLR-0001".to_string(),
+            mutation: None,
+            coverage: None,
+        }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["llr"]["id"], "LLR-0001");
+    assert!(json.get("prompt_hint").is_some());
+    assert!(json.get("schema_version").is_some());
+}
+
+// ── TC-017: req_audit_independence ─────────────────────────────────────────
+
+/// TC-017: req_audit_independence returns an IndependenceResult.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_audit_independence() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_audit_independence(Parameters(OptionalIdInput { id: None }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert!(json.get("violations").is_some());
+    assert!(json.get("warnings").is_some());
+}
+
+// ── TC-018: req_check_provenance ───────────────────────────────────────────
+
+/// TC-018: req_check_provenance returns an array of violations.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_check_provenance() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server.req_check_provenance().unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert!(json.is_array(), "req_check_provenance must return a JSON array");
+}
+
+// ── TC-019: req_init ───────────────────────────────────────────────────────
+
+/// TC-019: req_init reports already-initialised on an existing project.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_init_already_initialized() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server.req_init().unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert_eq!(json["initialized"], true);
+    assert_eq!(json["message"], "Project already initialized");
+}
+
+// ── TC-020: req_export with id and markdown ────────────────────────────────
+
+/// TC-020: req_export with an id exports a single requirement.
+// VERIFIES: TST-0011
+// VERIFIES: LLR-0025
+#[test]
+fn test_mcp_export_single_by_id() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_export(Parameters(ExportInput {
+            format: "json".to_string(),
+            id: Some("HLR-0001".to_string()),
+        }))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&ok_text(result)).unwrap();
+    assert!(json.is_array());
+    assert_eq!(json.as_array().unwrap().len(), 1);
+    assert_eq!(json[0]["id"], "HLR-0001");
+}
+
+/// TC-020b: req_export with markdown format returns text.
+#[test]
+fn test_mcp_export_markdown() {
+    let dir = TempDir::new().unwrap();
+    let server = ReqServer::new(make_engine(&dir));
+
+    let result = server
+        .req_export(Parameters(ExportInput {
+            format: "markdown".to_string(),
+            id: Some("HLR-0001".to_string()),
+        }))
+        .unwrap();
+    let text = ok_text(result);
+    assert!(text.contains("HLR-0001"), "markdown export should contain the ID");
 }

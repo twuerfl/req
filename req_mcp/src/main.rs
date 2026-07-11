@@ -8,14 +8,32 @@
 //!
 //! ## MCP Tools
 //!
-//! - `req_scan`     — scan source directories for requirement tags
-//! - `req_coverage` — get coverage statistics
-//! - `req_gaps`     — find traceability gaps
-//! - `req_check`    — validate all links
-//! - `req_trace`    — get trace tree for a requirement
-//! - `req_impact`   — impact analysis for a requirement
-//! - `req_list`     — list requirements (filterable by type/status)
-//! - `req_export`   — export requirements as JSON or ai-context
+//! ### Requirements lifecycle
+//! - `req_init`                — initialise a new project (no-op if already done)
+//! - `req_create_requirement`  — create an HLR/LLR/TST on disk and in cache
+//! - `req_remove`              — remove a requirement from disk and/or cache
+//! - `req_import`              — import requirements from Markdown/JSON
+//! - `req_import_ai`           — import AI-generated suggestions (forced draft)
+//! - `req_migrate`             — upgrade requirement files to current schema
+//!
+//! ### Query & analysis
+//! - `req_scan`                — scan source directories for requirement tags
+//! - `req_coverage`            — get coverage statistics
+//! - `req_gaps`                — find traceability gaps (incl. import staleness)
+//! - `req_check`               — validate all links
+//! - `req_trace`               — get trace tree for a requirement
+//! - `req_impact`              — impact analysis for a requirement
+//! - `req_list`                — list requirements (filterable by type/status)
+//! - `req_export`              — export requirements as JSON/ai-context/markdown
+//!
+//! ### AI output integrity audits
+//! - `req_audit_triviality`     — static hollow-body detection
+//! - `req_audit_criteria`       — acceptance-criterion linkage report
+//! - `req_audit_mutation`       — correlate a cargo-mutants JSON report
+//! - `req_audit_coverage`       — correlate a cargo llvm-cov JSON report
+//! - `req_audit_export_context` — full LLM-reviewable audit bundle
+//! - `req_audit_independence`   — impl/test author independence check
+//! - `req_check_provenance`     — verify all requirements have valid provenance
 //!
 //! ## MCP Resources
 //!

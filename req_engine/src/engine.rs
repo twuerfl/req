@@ -822,7 +822,7 @@ fn normalize_path(path: &Path, base: &Path) -> PathBuf {
 }
 
 /// Result of a `remove_requirement` operation
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct RemoveResult {
     /// The ID that was removed
     pub id: String,
